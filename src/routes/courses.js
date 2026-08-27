@@ -1,15 +1,15 @@
 const express = require("express");
-const router = express.Router();
-const courseController = require("../controllers/courseController");
+const controller = require("../controllers/courseController");
+const asyncHandler = require("../utils/asyncHandler");
+const validate = require("../middleware/validate");
 const { authenticateTeacher } = require("../middleware/auth");
+const { courseCreateSchema, courseUpdateSchema, idParamSchema, paginationSchema } = require("../utils/schemas");
 
-// POST /api/courses (Create a new course)
-router.post("/", authenticateTeacher, courseController.createCourse);
+const router = express.Router();
 
-// PUT /api/courses/:id (Update a course)
-router.put("/:id", authenticateTeacher, courseController.updateCourse);
-
-// DELETE /api/courses/:id (Delete a course)
-router.delete("/:id", authenticateTeacher, courseController.deleteCourse);
+router.get("/", validate(paginationSchema, "query"), asyncHandler(controller.listCourses));
+router.post("/", authenticateTeacher, validate(courseCreateSchema), asyncHandler(controller.createCourse));
+router.put("/:id", authenticateTeacher, validate(idParamSchema, "params"), validate(courseUpdateSchema), asyncHandler(controller.updateCourse));
+router.delete("/:id", authenticateTeacher, validate(idParamSchema, "params"), asyncHandler(controller.deleteCourse));
 
 module.exports = router;

@@ -1,20 +1,11 @@
 const express = require("express");
-const router = express.Router();
-const enrollmentController = require("../controllers/enrollmentController");
+const controller = require("../controllers/enrollmentController");
+const asyncHandler = require("../utils/asyncHandler");
+const validate = require("../middleware/validate");
 const { authenticateStudent } = require("../middleware/auth");
+const { idParamSchema, paginationSchema } = require("../utils/schemas");
 
-// GET /api/enrollment/courses (Get available courses for enrollment)
-router.get(
-  "/courses",
-  authenticateStudent,
-  enrollmentController.getAvailableCourses
-);
-
-// POST /api/enrollment/courses/:id (Enroll in a course)
-router.post(
-  "/courses/:id",
-  authenticateStudent,
-  enrollmentController.enrollInCourse
-);
-
+const router = express.Router();
+router.get("/courses", authenticateStudent, validate(paginationSchema, "query"), asyncHandler(controller.getAvailableCourses));
+router.post("/courses/:id", authenticateStudent, validate(idParamSchema, "params"), asyncHandler(controller.enrollInCourse));
 module.exports = router;

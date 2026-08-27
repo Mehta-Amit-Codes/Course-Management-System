@@ -1,27 +1,12 @@
 const express = require("express");
-const router = express.Router();
-const progressController = require("../controllers/progressController");
+const controller = require("../controllers/progressController");
+const asyncHandler = require("../utils/asyncHandler");
+const validate = require("../middleware/validate");
 const { authenticateStudent } = require("../middleware/auth");
+const { idParamSchema, lessonSchema, quizSchema } = require("../utils/schemas");
 
-// GET /api/progress/courses/:id (Get student progress in a course)
-router.get(
-  "/courses/:id",
-  authenticateStudent,
-  progressController.getStudentCourseProgress
-);
-
-// POST /api/progress/courses/:id/lesson (Mark a lesson as completed)
-router.post(
-  "/courses/:id/lesson",
-  authenticateStudent,
-  progressController.markLessonCompleted
-);
-
-// POST /api/progress/courses/:id/quiz (Record a quiz score)
-router.post(
-  "/courses/:id/quiz",
-  authenticateStudent,
-  progressController.recordQuizScore
-);
-
+const router = express.Router();
+router.get("/courses/:id", authenticateStudent, validate(idParamSchema, "params"), asyncHandler(controller.getStudentCourseProgress));
+router.post("/courses/:id/lesson", authenticateStudent, validate(idParamSchema, "params"), validate(lessonSchema), asyncHandler(controller.markLessonCompleted));
+router.post("/courses/:id/quiz", authenticateStudent, validate(idParamSchema, "params"), validate(quizSchema), asyncHandler(controller.recordQuizScore));
 module.exports = router;

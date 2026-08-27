@@ -1,95 +1,43 @@
 const Course = require("../models/course");
-const User = require("../models/user");
+const Enrollment = require("../models/enrollment");
+const AppError = require("../utils/appError");
 
-// Get student progress in a course
+async function getEnrollment(student, courseId) {
+  const enrollment = await Enrollment.findOne({ student, course: courseId }).populate("course", "title lessons");
+  if (!enrollment) throw new AppError(404, "Course not found or student not enrolled in this course", "ENROLLMENT_NOT_FOUND");
+  return enrollment;
+}
+
 exports.getStudentCourseProgress = async (req, res) => {
-  try {
-    const courseId = req.params.id;
-    const studentId = req.user._id; // The authenticated student's ID will be available in the request due to middleware
-
-    // Find the enrolled course for the student
-    const enrolledCourse = await User.findOne(
-      { _id: studentId, "enrolledCourses.courseId": courseId },
-      { "enrolledCourses.$": 1 }
-    );
-
-    if (!enrolledCourse) {
-      return res
-        .status(404)
-        .json({
-          error: "Course not found or student not enrolled in this course",
-        });
+  const enrollment = await getEnrollment(req.user._id, req.params.id);
+  res.json({
+    progress: {
+      courseId: enrollment.course._id,
+      completedLessons: enrollment.completedLessons,
+      quizScores: Object.fromEntries(enrollment.quizScores)
     }
-
-    res
-      .status(200)
-      .json({ progress: enrolledCourse.enrolledCourses[0].progress });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  });
 };
 
-// Mark a lesson as completed
 exports.markLessonCompleted = async (req, res) => {
-  try {
-    const courseId = req.params.id;
-    const studentId = req.user._id; // The authenticated student's ID will be available in the request due to middleware
-    const { lessonId } = req.body;
+  const { lessonId } = req.body;
+  const enrollment = await getEnrollment(req.user._id, req.params.id);
+  const validLesson = enrollment.course.lessons.some(l => l._id.toString() === lessonId);
+  if (!validLesson) throw new AppError(400, "Lesson does not belong to this course", "INVALID_LESSON");
 
-    // Find the enrolled course for the student
-    const enrolledCourse = await User.findOne(
-      { _id: studentId, "enrolledCourses.courseId": courseId },
-      { "enrolledCourses.$": 1 }
-    );
-
-    if (!enrolledCourse) {
-      return res
-        .status(404)
-        .json({
-          error: "Course not found or student not enrolled in this course",
-        });
-    }
-
-    // Mark the lesson as completed
-    enrolledCourse.enrolledCourses[0].progress.completedLessons.push(lessonId);
-    await enrolledCourse.save();
-
-    res.status(200).json({ message: "Lesson marked as completed" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  await Enrollment.updateOne(
+    { _id: enrollment._id },
+    { $addToSet: { completedLessons: lessonId } }
+  );
+  res.json({ message: "Lesson marked as completed" });
 };
 
-// Record a quiz score
 exports.recordQuizScore = async (req, res) => {
-  try {
-    const courseId = req.params.id;
-    const studentId = req.user._id; // The authenticated student's ID will be available in the request due to middleware
-    const { quizId, score } = req.body;
-
-    // Find the enrolled course for the student
-    const enrolledCourse = await User.findOne(
-      { _id: studentId, "enrolledCourses.courseId": courseId },
-      { "enrolledCourses.$": 1 }
-    );
-
-    if (!enrolledCourse) {
-      return res
-        .status(404)
-        .json({
-          error: "Course not found or student not enrolled in this course",
-        });
-    }
-
-    // Record the quiz score
-    enrolledCourse.enrolledCourses[0].progress.quizScores.set(quizId, score);
-    await enrolledCourse.save();
-
-    res.status(200).json({ message: "Quiz score recorded" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  const { quizId, score } = req.body;
+  const enrollment = await getEnrollment(req.user._id, req.params.id);
+  await Enrollment.updateOne(
+    { _id: enrollment._id },
+    { $set: { [`quizScores.${quizId}`]: score } }
+  );
+  res.json({ message: "Quiz score recorded" });
 };

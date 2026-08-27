@@ -1,75 +1,41 @@
 const Course = require("../models/course");
+const Enrollment = require("../models/enrollment");
+const AppError = require("../utils/appError");
+const { getPagination } = require("../utils/pagination");
 
-// Create a new course
+exports.listCourses = async (req, res) => {
+  const { page, limit, skip } = getPagination(req.query);
+  const filter = {};
+  if (req.query.search) filter.$text = { $search: req.query.search.trim() };
+
+  const [courses, total] = await Promise.all([
+    Course.find(filter).populate("teacher", "username school").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Course.countDocuments(filter)
+  ]);
+
+  res.json({ data: courses, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+};
+
 exports.createCourse = async (req, res) => {
-  try {
-    const { title, description } = req.body;
-    const teacher = req.user._id; // The authenticated teacher's ID will be available in the request due to middleware
-
-    // Validate input data
-    if (!title || !description) {
-      return res
-        .status(400)
-        .json({ error: "Title and description are required" });
-    }
-
-    // Create a new course
-    const course = new Course({ title, description, teacher });
-    await course.save();
-
-    res.status(201).json({ message: "Course created successfully", course });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  const course = await Course.create({ ...req.body, teacher: req.user._id });
+  res.status(201).json({ course });
 };
 
-// Update a course
 exports.updateCourse = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, description } = req.body;
+  const course = await Course.findOneAndUpdate(
+    { _id: req.params.id, teacher: req.user._id },
+    req.body,
+    { new: true, runValidators: true }
+  ).populate("teacher", "username school");
 
-    // Validate input data
-    if (!title || !description) {
-      return res
-        .status(400)
-        .json({ error: "Title and description are required" });
-    }
-
-    // Find and update the course
-    const course = await Course.findByIdAndUpdate(
-      id,
-      { title, description },
-      { new: true }
-    );
-
-    if (!course) {
-      return res.status(404).json({ error: "Course not found" });
-    }
-
-    res.status(200).json({ message: "Course updated successfully", course });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  if (!course) throw new AppError(404, "Course not found or not owned by current teacher", "COURSE_NOT_FOUND");
+  res.json({ course });
 };
 
-// Delete a course
 exports.deleteCourse = async (req, res) => {
-  try {
-    const { id } = req.params;
+  const course = await Course.findOneAndDelete({ _id: req.params.id, teacher: req.user._id });
+  if (!course) throw new AppError(404, "Course not found or not owned by current teacher", "COURSE_NOT_FOUND");
 
-    // Find and delete the course
-    const course = await Course.findByIdAndDelete(id);
-
-    if (!course) {
-      return res.status(404).json({ error: "Course not found" });
-    }
-
-    res.status(200).json({ message: "Course deleted successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  await Enrollment.deleteMany({ course: course._id });
+  res.json({ message: "Course deleted successfully" });
 };

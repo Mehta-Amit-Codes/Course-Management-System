@@ -1,36 +1,44 @@
-// Import required modules
 const jwt = require("jsonwebtoken");
-const config = require("../../Config");
+const config = require("../config/env");
+const User = require("../models/user");
+const AppError = require("../utils/appError");
+const asyncHandler = require("../utils/asyncHandler");
 
-// Authentication middleware for teachers
-exports.authenticateTeacher = (req, res, next) => {
-  // Extract the JWT token from the 'Authorization' header
-  const token = req.header("Authorization");
-
-  // Check if the token is missing
-  if (!token) {
-    return res.status(401).json({ error: "Unauthorized" });
+const authenticate = asyncHandler(async (req, _res, next) => {
+  const header = req.get("Authorization");
+  if (!header || !header.startsWith("Bearer ")) {
+    throw new AppError(401, "Authentication required", "AUTH_REQUIRED");
   }
 
+  const token = header.slice(7).trim();
+  if (!token) throw new AppError(401, "Authentication required", "AUTH_REQUIRED");
+
+  let payload;
   try {
-    // Verify and decode the token using the secret from the configuration
-    const decoded = jwt.verify(token, config.jwtSecret);
-
-    // Check if the decoded token's role is not 'teacher'
-    if (decoded.role !== "teacher") {
-      return res
-        .status(403)
-        .json({ error: "Access denied. Only teachers are allowed" });
-    }
-
-    // If the token is valid and the role is 'teacher', store the decoded data in 'req.user'
-    req.user = decoded;
-
-    // Move to the next middleware or route handler
-    next();
-  } catch (err) {
-    // If an error occurs during token verification, log the error and respond with a 500 status
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    payload = jwt.verify(token, config.JWT_SECRET);
+  } catch {
+    throw new AppError(401, "Invalid or expired token", "INVALID_TOKEN");
   }
+
+  const user = await User.findById(payload.sub).select("_id username role school");
+  if (!user) throw new AppError(401, "User no longer exists", "USER_NOT_FOUND");
+
+  req.user = user;
+  next();
+});
+
+function authorize(...roles) {
+  return (req, _res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return next(new AppError(403, "You do not have permission to perform this action", "FORBIDDEN"));
+    }
+    next();
+  };
+}
+
+module.exports = {
+  authenticate,
+  authorize,
+  authenticateTeacher: [authenticate, authorize("teacher")],
+  authenticateStudent: [authenticate, authorize("student")]
 };

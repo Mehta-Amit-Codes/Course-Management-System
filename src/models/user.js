@@ -1,33 +1,13 @@
 const mongoose = require("mongoose");
 
-const notificationSchema = new mongoose.Schema({
-  message: { type: String, required: true },
-  date: { type: Date, default: Date.now },
-  isRead: { type: Boolean, default: false },
-});
-
 const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: { type: String, enum: ["student", "teacher"], required: true },
-  school: { type: String },
-  enrolledCourses: [
-    {
-      courseId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Course",
-        required: true,
-      },
-      enrollmentDate: { type: Date, default: Date.now },
-      progress: {
-        completedLessons: { type: [String], default: [] },
-        quizScores: { type: Map, default: {} },
-      },
-    },
-  ],
-  notifications: [notificationSchema],
-});
+  username: {
+    type: String, required: true, unique: true, trim: true, minlength: 3, maxlength: 80,
+    index: true
+  },
+  password: { type: String, required: true, select: false },
+  role: { type: String, enum: ["student", "teacher"], required: true, index: true },
+  school: { type: String, trim: true, maxlength: 200 }
+}, { timestamps: true, versionKey: false });
 
-const User = mongoose.model("User", userSchema);
-
-module.exports = User;
+module.exports = mongoose.model("User", userSchema);

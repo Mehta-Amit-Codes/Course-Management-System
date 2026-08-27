@@ -1,64 +1,32 @@
 const Course = require("../models/course");
-const User = require("../models/user");
+const Enrollment = require("../models/enrollment");
+const AppError = require("../utils/appError");
+const { getPagination } = require("../utils/pagination");
 
-// Get available courses for enrollment
 exports.getAvailableCourses = async (req, res) => {
-  try {
-    // Find all courses that are not already enrolled by the student
-    const studentId = req.user._id; // The authenticated student's ID will be available in the request due to middleware
+  const { page, limit, skip } = getPagination(req.query);
+  const enrolled = await Enrollment.find({ student: req.user._id }).distinct("course");
 
-    // Get the list of course IDs already enrolled by the student
-    const enrolledCourses = await User.findById(studentId).select(
-      "enrolledCourses"
-    );
-    const enrolledCourseIds = enrolledCourses.enrolledCourses.map(
-      (course) => course.courseId
-    );
+  const filter = { _id: { $nin: enrolled } };
+  if (req.query.search) filter.$text = { $search: req.query.search.trim() };
 
-    // Find courses that the student has not yet enrolled in
-    const availableCourses = await Course.find({
-      _id: { $nin: enrolledCourseIds },
-    });
+  const [courses, total] = await Promise.all([
+    Course.find(filter).populate("teacher", "username school").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Course.countDocuments(filter)
+  ]);
 
-    res.status(200).json({ availableCourses });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  res.json({ data: courses, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
 };
 
-// Enroll in a course
 exports.enrollInCourse = async (req, res) => {
+  const course = await Course.findById(req.params.id).select("_id");
+  if (!course) throw new AppError(404, "Course not found", "COURSE_NOT_FOUND");
+
   try {
-    const courseId = req.params.id;
-    const studentId = req.user._id; // The authenticated student's ID will be available in the request due to middleware
-
-    // Find the course to enroll in
-    const course = await Course.findById(courseId);
-    if (!course) {
-      return res.status(404).json({ error: "Course not found" });
-    }
-
-    // Check if the student is already enrolled in the course
-    const isEnrolled = await User.exists({
-      _id: studentId,
-      "enrolledCourses.courseId": courseId,
-    });
-    if (isEnrolled) {
-      return res
-        .status(400)
-        .json({ error: "Student is already enrolled in this course" });
-    }
-
-    // Enroll the student in the course
-    const enrollmentData = { courseId: courseId, enrollmentDate: new Date() };
-    await User.findByIdAndUpdate(studentId, {
-      $push: { enrolledCourses: enrollmentData },
-    });
-
-    res.status(200).json({ message: "Enrolled in the course successfully" });
+    const enrollment = await Enrollment.create({ student: req.user._id, course: course._id });
+    res.status(201).json({ enrollment });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    if (err.code === 11000) throw new AppError(409, "Student is already enrolled in this course", "ALREADY_ENROLLED");
+    throw err;
   }
 };

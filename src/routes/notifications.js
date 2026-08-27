@@ -1,22 +1,12 @@
 const express = require("express");
+const controller = require("../controllers/notificationsController");
+const asyncHandler = require("../utils/asyncHandler");
+const validate = require("../middleware/validate");
+const { authenticateTeacher, authenticateStudent } = require("../middleware/auth");
+const { idParamSchema, notificationSchema, paginationSchema } = require("../utils/schemas");
+
 const router = express.Router();
-const notificationsController = require("../controllers/notificationsController");
-const {
-  authenticateTeacher,
-  authenticateStudent,
-} = require("../middleware/auth");
-
-// GET /api/notifications (Get all notifications for the authenticated user)
-router.get("/", authenticateStudent, notificationsController.getNotifications);
-
-// POST /api/notifications (Send a notification to a user)
-router.post("/", authenticateTeacher, notificationsController.sendNotification);
-
-// PATCH /api/notifications/:id (Mark a notification as read)
-router.patch(
-  "/:id",
-  authenticateStudent,
-  notificationsController.markNotificationAsRead
-);
-
+router.get("/", authenticateStudent, validate(paginationSchema, "query"), asyncHandler(controller.getNotifications));
+router.post("/", authenticateTeacher, validate(notificationSchema), asyncHandler(controller.sendNotification));
+router.patch("/:id", authenticateStudent, validate(idParamSchema, "params"), asyncHandler(controller.markNotificationAsRead));
 module.exports = router;

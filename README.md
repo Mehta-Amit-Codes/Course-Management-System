@@ -1,5 +1,7 @@
 # Course Management System — 2026 Edition
 
+[![Diagram](https://img.shields.io/badge/gitdiagram-view%20architecture-blue)](https://gitdiagram.com/mehta-amit-codes/course-management-system)
+
 A production-oriented Node.js + MongoDB REST API for teachers and students.
 
 ## What was fixed
